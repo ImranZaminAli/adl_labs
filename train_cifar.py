@@ -14,6 +14,8 @@ from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 from torchvision import transforms
 from torchvision.transforms import RandomHorizontalFlip
+from torchvision.transforms import ColorJitter
+
 
 import argparse
 from pathlib import Path
@@ -237,9 +239,12 @@ class Trainer:
                 ## TASK 1: Compute the forward pass of the model, print the output shape
                 ##         and quit the program
                 #output =
-                if parser.parse_args().data_aug_hflip:
+                args = parser.parse_args()
+                if args.data_aug_hflip:
                     transform = RandomHorizontalFlip()
                     batch = transform(batch)
+                transform = ColorJitter(brightness=args.data_aug_brightness)
+                batch = transform(batch)
                 logits = self.model.forward(batch)
 
                 ## TASK 7: Rename `output` to `logits`, remove the output shape printing
@@ -366,13 +371,14 @@ def get_summary_writer_log_dir(args: argparse.Namespace) -> str:
         from getting logged to the same TB log directory (which you can't easily
         untangle in TB).
     """
-    tb_log_dir_prefix =(
-      f"CNN_bn_"
-      f"bs={args.batch_size}_"
-      f"lr={args.learning_rate}_"
-      f"momentum=0.9_" +
-      ("hflip_" if args.data_aug_hflip else "") +
-      f"run_"
+    tb_log_dir_prefix = (
+        f"CNN_bn_"
+        f"bs={args.batch_size}_"
+        f"lr={args.learning_rate}_"
+        f"momentum=0.9_"
+        f"brightness={args.data_aug_brightness}_" +
+        ("hflip_" if args.data_aug_hflip else "") +
+        f"run_"
     )
     i = 0
     while i < 1000:
