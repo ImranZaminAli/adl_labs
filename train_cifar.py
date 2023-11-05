@@ -15,6 +15,7 @@ from torch.utils.tensorboard import SummaryWriter
 from torchvision import transforms
 from torchvision.transforms import RandomHorizontalFlip
 from torchvision.transforms import ColorJitter
+from torchvision.transforms import RandomGreyScale
 
 
 import argparse
@@ -71,6 +72,11 @@ parser.add_argument('--data-aug-hflip', action="store_true")
 parser.add_argument(
     "--data-aug-brightness",
     default=0,
+    type=float
+)
+parser.add_argument(
+    "--data-aug-grayscale",
+    default=0.1
     type=float
 )
 
@@ -244,6 +250,8 @@ class Trainer:
                     transform = RandomHorizontalFlip()
                     batch = transform(batch)
                 transform = ColorJitter(brightness=args.data_aug_brightness)
+                batch = transform(batch)
+                transform = RandomGreyScale(p=args.data_aug_grayscale)
                 batch = transform(batch)
                 logits = self.model.forward(batch)
 
