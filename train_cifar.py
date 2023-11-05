@@ -15,7 +15,7 @@ from torch.utils.tensorboard import SummaryWriter
 from torchvision import transforms
 from torchvision.transforms import RandomHorizontalFlip
 from torchvision.transforms import ColorJitter
-from torchvision.transforms import RandomGreyScale
+from torchvision.transforms import RandomGrayScale
 
 
 import argparse
