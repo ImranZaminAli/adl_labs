@@ -76,7 +76,7 @@ parser.add_argument(
 )
 parser.add_argument(
     "--data-aug-grayscale",
-    default=0.1
+    default=0.1,
     type=float
 )
 
