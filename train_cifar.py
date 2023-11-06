@@ -15,7 +15,7 @@ from torch.utils.tensorboard import SummaryWriter
 from torchvision import transforms
 from torchvision.transforms import RandomHorizontalFlip
 from torchvision.transforms import ColorJitter
-from torchvision.transforms import RandomGrayScale
+from torchvision.transforms import RandomGrayscale
 
 
 import argparse
@@ -79,6 +79,11 @@ parser.add_argument(
     default=0.1,
     type=float
 )
+parser.add_argument(
+    "--drop-out",
+    default=0.5,
+    type=float
+)
 
 class ImageShape(NamedTuple):
     height: int
@@ -118,7 +123,7 @@ def main(args):
         pin_memory=True,
     )
 
-    model = CNN(height=32, width=32, channels=3, class_count=10)
+    model = CNN(height=32, width=32, channels=3, class_count=10, drop_out=parser.parse_args().drop_out)
 
     ## TASK 8: Redefine the criterion to be softmax cross entropy
     criterion = nn.CrossEntropyLoss()
@@ -147,11 +152,11 @@ def main(args):
 
 
 class CNN(nn.Module):
-    def __init__(self, height: int, width: int, channels: int, class_count: int):
+    def __init__(self, height: int, width: int, channels: int, class_count: int, drop_out : float):
         super().__init__()
         self.input_shape = ImageShape(height=height, width=width, channels=channels)
         self.class_count = class_count
-
+        self.dropout = nn.Dropout(drop_out);
         self.conv1 = nn.Conv2d(
             in_channels=self.input_shape.channels,
             out_channels=32,
@@ -186,7 +191,9 @@ class CNN(nn.Module):
         x = F.relu(self.bn2D2(self.conv2(x)))
         x = self.pool2(x)
         x = torch.flatten(x, start_dim=1)
+        x = self.dropout(x)
         x = F.relu(self.bn1D(self.fc1(x)))
+        x = self.dropout(x)
         x = self.fc2(x)
         ## TASK 2-2: Pass x through the second convolutional layer
         ## TASK 3-2: Pass x through the second pooling layer
@@ -251,7 +258,7 @@ class Trainer:
                     batch = transform(batch)
                 transform = ColorJitter(brightness=args.data_aug_brightness)
                 batch = transform(batch)
-                transform = RandomGreyScale(p=args.data_aug_grayscale)
+                transform = RandomGrayscale(p=args.data_aug_grayscale)
                 batch = transform(batch)
                 logits = self.model.forward(batch)
 
