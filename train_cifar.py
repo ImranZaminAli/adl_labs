@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+from __future__ import annotations
+
+import sys
 import time
 from multiprocessing import cpu_count
 from typing import Union, NamedTuple
@@ -13,10 +16,6 @@ from torch.optim.optimizer import Optimizer
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 from torchvision import transforms
-from torchvision.transforms import RandomHorizontalFlip
-from torchvision.transforms import ColorJitter
-from torchvision.transforms import RandomGrayscale
-
 
 import argparse
 from pathlib import Path
@@ -24,13 +23,14 @@ from pathlib import Path
 torch.backends.cudnn.benchmark = True
 
 parser = argparse.ArgumentParser(
-    description="Train a simple CNN on CIFAR-10",
+    description="Train a simple Transformer on CIFAR-10",
     formatter_class=argparse.ArgumentDefaultsHelpFormatter,
 )
 default_dataset_dir = Path.home() / ".cache" / "torch" / "datasets"
 parser.add_argument("--dataset-root", default=default_dataset_dir)
 parser.add_argument("--log-dir", default=Path("logs"), type=Path)
-parser.add_argument("--learning-rate", default=1e-1, type=float, help="Learning rate")
+parser.add_argument("--learning-rate", default=1e-2, type=float, help="Learning rate")
+parser.add_argument("--num-heads", default=1, type=int, help="Number of Heads")
 parser.add_argument(
     "--batch-size",
     default=128,
@@ -68,22 +68,7 @@ parser.add_argument(
     type=int,
     help="Number of worker processes used to load data.",
 )
-parser.add_argument('--data-aug-hflip', action="store_true")
-parser.add_argument(
-    "--data-aug-brightness",
-    default=0,
-    type=float
-)
-parser.add_argument(
-    "--data-aug-grayscale",
-    default=0.1,
-    type=float
-)
-parser.add_argument(
-    "--drop-out",
-    default=0.5,
-    type=float
-)
+
 
 class ImageShape(NamedTuple):
     height: int
@@ -93,10 +78,8 @@ class ImageShape(NamedTuple):
 
 if torch.cuda.is_available():
     DEVICE = torch.device("cuda")
-    print('cuda')
 else:
     DEVICE = torch.device("cpu")
-    print('cpu')
 
 
 def main(args):
@@ -123,13 +106,11 @@ def main(args):
         pin_memory=True,
     )
 
-    model = CNN(height=32, width=32, channels=3, class_count=10, drop_out=parser.parse_args().drop_out)
+    model = CIFAR_Transformer(height=32, width=32, channels=3, patch_size=(8, 8), class_count=10)
 
-    ## TASK 8: Redefine the criterion to be softmax cross entropy
     criterion = nn.CrossEntropyLoss()
 
-    ## TASK 11: Define the optimizer
-    optimizer = torch.optim.SGD(model.parameters(), lr=args.learning_rate, momentum=0.9)
+    optimizer = optim.SGD(model.parameters(), lr=0.05)
 
     log_dir = get_summary_writer_log_dir(args)
     print(f"Writing logs to {log_dir}")
@@ -151,64 +132,21 @@ def main(args):
     summary_writer.close()
 
 
-class CNN(nn.Module):
-    def __init__(self, height: int, width: int, channels: int, class_count: int, drop_out : float):
+class CIFAR_Transformer(nn.Module):
+    def __init__(self, height: int, width: int, channels: int, patch_size: tuple[int, int], class_count: int, n_heads: int=1):
         super().__init__()
-        self.input_shape = ImageShape(height=height, width=width, channels=channels)
+        assert width % patch_size[0] == 0 and height % patch_size[1] == 0
         self.class_count = class_count
-        self.dropout = nn.Dropout(drop_out);
-        self.conv1 = nn.Conv2d(
-            in_channels=self.input_shape.channels,
-            out_channels=32,
-            kernel_size=(5, 5),
-            padding=(2, 2),
-        )
-        self.initialise_layer(self.conv1)
-        self.pool1 = nn.MaxPool2d(kernel_size=(2, 2), stride=(2, 2))
-        self.bn2D1 = nn.BatchNorm2d(32)
-        self.conv2 = nn.Conv2d(
-            in_channels= 32,
-            out_channels= 64,
-            kernel_size=(5,5),
-            padding=(2,2)
-        )
-        self.initialise_layer(self.conv2)
-        ## TASK 2-1: Define the second convolutional layer and initialise its parameters
-        self.pool2 = nn.MaxPool2d(kernel_size=(2, 2), stride=(2, 2))
-        self.bn2D2 = nn.BatchNorm2d(64)
-        self.fc1 = nn.Linear(4096, 1024)
-        self.bn1D = nn.BatchNorm1d(1024)
-        self.initialise_layer(self.fc1)
-        self.fc2 = nn.Linear(1024, 10)
-        self.initialise_layer(self.fc2)
-        ## TASK 3-1: Define the second pooling layer
-        ## TASK 5-1: Define the first FC layer and initialise its parameters
-        ## TASK 6-1: Define the last FC layer and initialise its parameters
+        self.n_heads = n_heads
+        #TASKS 2, 3.1, 7, 8, 9.1, 11.1
+        self.transformer = nn.TransformerEncoderLayer(nhead=1, d_model=192, batch_first=True)
+
 
     def forward(self, images: torch.Tensor) -> torch.Tensor:
-        x = F.relu(self.bn2D1(self.conv1(images)))
-        x = self.pool1(x)
-        x = F.relu(self.bn2D2(self.conv2(x)))
-        x = self.pool2(x)
-        x = torch.flatten(x, start_dim=1)
-        x = self.dropout(x)
-        x = F.relu(self.bn1D(self.fc1(x)))
-        x = self.dropout(x)
-        x = self.fc2(x)
-        ## TASK 2-2: Pass x through the second convolutional layer
-        ## TASK 3-2: Pass x through the second pooling layer
-        ## TASK 4: Flatten the output of the pooling layer so it is of shape
-        ##         (batch_size, 4096)
-        ## TASK 5-2: Pass x through the first fully connected layer
-        ## TASK 6-2: Pass x through the last fully connected layer
+        x = nn.Identity(images)
+        #TASKS 1, 2, 3.2, 7, 8, 9.2, 10, 11.2
+        patches = patchify(images, 8, 8)
         return x
-
-    @staticmethod
-    def initialise_layer(layer):
-        if hasattr(layer, "bias"):
-            nn.init.zeros_(layer.bias)
-        if hasattr(layer, "weight"):
-            nn.init.kaiming_normal_(layer.weight)
 
 
 class Trainer:
@@ -240,6 +178,7 @@ class Trainer:
         start_epoch: int = 0
     ):
         self.model.train()
+        #TASK 5
         for epoch in range(start_epoch, epochs):
             self.model.train()
             data_load_start_time = time.time()
@@ -249,32 +188,18 @@ class Trainer:
                 data_load_end_time = time.time()
 
 
-                ## TASK 1: Compute the forward pass of the model, print the output shape
-                ##         and quit the program
-                #output =
-                args = parser.parse_args()
-                if args.data_aug_hflip:
-                    transform = RandomHorizontalFlip()
-                    batch = transform(batch)
-                transform = ColorJitter(brightness=args.data_aug_brightness)
-                batch = transform(batch)
-                transform = RandomGrayscale(p=args.data_aug_grayscale)
-                batch = transform(batch)
                 logits = self.model.forward(batch)
 
-                ## TASK 7: Rename `output` to `logits`, remove the output shape printing
-                ##         and get rid of the `import sys; sys.exit(1)`
+                #TASK 4
+                sys.exit()
 
-                ## TASK 9: Compute the loss using self.criterion and
-                ##         store it in a variable called `loss`
                 loss = self.criterion(logits, labels)
 
-                ## TASK 10: Compute the backward pass
                 loss.backward()
 
-                ## TASK 12: Step the optimizer and then zero out the gradient buffers.
                 self.optimizer.step()
                 self.optimizer.zero_grad()
+
                 with torch.no_grad():
                     preds = logits.argmax(-1)
                     accuracy = compute_accuracy(labels, preds)
@@ -292,6 +217,7 @@ class Trainer:
             self.summary_writer.add_scalar("epoch", epoch, self.step)
             if ((epoch + 1) % val_frequency) == 0:
                 self.validate()
+
                 # self.validate() will put the model in validation mode,
                 # so we have to switch back to train mode afterwards
                 self.model.train()
@@ -386,15 +312,7 @@ def get_summary_writer_log_dir(args: argparse.Namespace) -> str:
         from getting logged to the same TB log directory (which you can't easily
         untangle in TB).
     """
-    tb_log_dir_prefix = (
-        f"CNN_bn_"
-        f"bs={args.batch_size}_"
-        f"lr={args.learning_rate}_"
-        f"momentum=0.9_"
-        f"brightness={args.data_aug_brightness}_" +
-        ("hflip_" if args.data_aug_hflip else "") +
-        f"run_"
-    )
+    tb_log_dir_prefix = f'CNN_bs={args.batch_size}_lr={args.learning_rate}_run_'
     i = 0
     while i < 1000:
         tb_log_dir = args.log_dir / (tb_log_dir_prefix + str(i))
@@ -402,6 +320,19 @@ def get_summary_writer_log_dir(args: argparse.Namespace) -> str:
             return str(tb_log_dir)
         i += 1
     return str(tb_log_dir)
+
+
+def patchify(batch: torch.Tensor, x_size: int, y_size: int):
+    #batch_size, channels, height, width = batch.size()
+    unfold = nn.Unfold(kernel_size=(x_size, y_size), stride=(x_size, y_size))
+
+    # Apply unfold
+    batch = unfold(batch)
+
+    # Transpose from [128, 192, 16] to [128, 16, 192]
+    transposed = torch.transpose(batch, dim0=1, dim1=2)
+
+    return transposed
 
 
 if __name__ == "__main__":
